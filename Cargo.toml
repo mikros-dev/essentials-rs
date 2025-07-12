@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "http_client",
+    "logger",
+]
+
+[workspace.dependencies]
+async-trait = "0.1.88"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tokio = { version = "1.45.1", features = ["default"]}
+tracing = "0.1.41"
