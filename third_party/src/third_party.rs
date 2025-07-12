@@ -66,14 +66,6 @@ impl ThirdParty {
             final_request.apply_dependency_target(result, extractor)?;
         }
 
-        // let mut dependencies = std::mem::take(&mut final_request.dependency);
-        //
-        // for dependency in &mut dependencies {
-        //     let result = self.execute_dependency(dependency).await?;
-        //     let extractor = dependency.take_extractor();
-        //     final_request.apply_dependency_target(result, extractor)?;
-        // }
-
         let result = call.execute(&self.client, final_request).await;
         self.logger.debug("request finished", None);
         result
