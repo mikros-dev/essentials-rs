@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "http_client",
     "logger",
+    "third_party"
 ]
 
 [workspace.dependencies]
