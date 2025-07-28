@@ -133,20 +133,28 @@ impl Request<serde_json::Value, serde_json::Value> {
 
             // All extracted values of body kind will be put in a single JSON
             // body.
-            let mut response_body = HashMap::new();
+            let mut response_body = serde_json::Map::new();
 
             for (extractor, target) in extractors {
                 let value = self.extract_value(&json_body, &extractor)?;
-                self.apply_to_target(target, value, &mut response_body);
+
+                if let DependencyTarget::BodyField(field) = target {
+                    response_body.insert(field, serde_json::Value::String(value));
+                } else {
+                    self.apply_to_target(target, value, &mut HashMap::new());
+                }
             }
 
-            // For now, we only support target body when we have no previous
-            // body in the request.
-            if self.body.is_some() && !response_body.is_empty() {
-                return Err(Error::CannotHandleBodyWithDependencyBody);
+            if let Some(mut existing_body) = self.body.take() {
+                if let Some(existing_map) = existing_body.as_object_mut() {
+                    existing_map.extend(response_body);
+                    self.body = Some(serde_json::Value::Object(existing_map.clone()));
+                } else {
+                    return Err(Error::CannotHandleBodyWithDependencyBody);
+                }
+            } else {
+                self.body = Some(serde_json::Value::Object(response_body));
             }
-
-            self.body = Some(serde_json::to_value(response_body)?);
         }
 
         Ok(())
