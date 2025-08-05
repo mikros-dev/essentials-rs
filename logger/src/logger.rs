@@ -6,11 +6,11 @@
 /// the host application's observability tools.
 ///
 /// Each log message is automatically prefixed with the crate and component
-/// name (e.g., `my_crate:http_client`) to help identify the source.
+/// name (e.g., `my_crate`) to help identify the source.
 ///
 /// # Example
 /// ```ignore
-/// let logger = Logger::new("my_crate", "http_client");
+/// let logger = Logger::new("my_crate");
 /// logger.info("request sent", None);
 /// logger.error("request failed", Some(json!({ "code": 500 })));
 /// ```
@@ -21,9 +21,9 @@ pub struct Logger {
 
 impl Logger {
     /// Creates a new logger instance with a given crate and component name.
-    pub fn new(crate_name: &str, name: &str) -> Self {
+    pub fn new(prefix: &str) -> Self {
         Self {
-            prefix: format!("{crate_name}:{name}"),
+            prefix: prefix.to_owned(),
         }
     }
 
