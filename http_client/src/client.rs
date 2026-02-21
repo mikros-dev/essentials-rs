@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::{Duration, Instant};
 
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
+use crate::multipart;
 
 /// Configuration options for the [`Client`].
 #[derive(Clone)]
@@ -30,6 +31,10 @@ pub struct Client {
 
 impl Client {
     /// Creates a new client from the given [`Options`].
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the reqwest client cannot be built with the provided options.
     pub fn new(opts: Options) -> Result<Self, Error> {
         let inner = reqwest::Client::builder()
             .timeout(opts.timeout.unwrap_or(Duration::from_secs(30)))
@@ -51,21 +56,15 @@ impl Client {
     }
 
     /// Sends an HTTP request with an optional body and returns a [`Response`].
-    pub async fn send_request<T: Serialize + ?Sized>(
-        &self,
-        request: Request,
-        body: Option<&T>,
-    ) -> Result<Response, Error> {
+    ///
+    /// # Errors
+    ///
+    /// - Returns an `Error` object if the request fails or encounters an error during processing.
+    pub async fn send_request(&self, request: Request) -> Result<Response, Error> {
         let now = Instant::now();
         let mut builder = self
             .inner
             .request(request.method.into(), self.build_url(&request.url));
-
-        let content_type = request
-            .content_type
-            .as_deref()
-            .unwrap_or(&self.content_type);
-        builder = builder.header("Content-Type", content_type);
 
         if let Some(headers) = request.headers {
             for (k, v) in &headers {
@@ -73,12 +72,44 @@ impl Client {
             }
         }
 
-        if let Some(b) = body {
-            let serialized = serde_json::to_vec(b)?;
-            builder = builder.body(serialized);
+        if let Some(b) = request.body {
+            match b {
+                Body::Json(v) => {
+                    // Only set the Content-Type header if we have a body to send.
+                    let content_type = request
+                        .content_type
+                        .as_deref()
+                        .unwrap_or(&self.content_type);
+
+                    builder = builder.header("Content-Type", content_type);
+
+                    let serialized = serde_json::to_vec(&v)?;
+                    builder = builder.body(serialized);
+                }
+                Body::Bytes(data) => {
+                    // Do not use the internal default Content-Type header because
+                    // it may conflict with the actual content type of the data.
+                    if let Some(ct) = request.content_type.as_deref() {
+                        builder = builder.header("Content-Type", ct);
+                    }
+
+                    builder = builder.body(data);
+                }
+                Body::Multipart(form) => {
+                    builder = builder.multipart(form.into());
+                }
+            }
         }
 
         let resp = builder.send().await?;
+        self.build_response(now, resp).await
+    }
+
+    async fn build_response(
+        &self,
+        now: Instant,
+        resp: reqwest::Response,
+    ) -> Result<Response, Error> {
         let status_code = resp.status().as_u16();
         let headers = resp
             .headers()
@@ -87,7 +118,7 @@ impl Client {
             .collect::<HashMap<_, _>>();
 
         let body = resp.bytes().await?.to_vec();
-        let elapsed = now.elapsed().as_millis() as i64;
+        let elapsed = i64::try_from(now.elapsed().as_millis())?;
 
         Ok(Response {
             body,
@@ -112,6 +143,16 @@ pub struct Request {
 
     /// Optional HTTP headers to include in the request.
     pub headers: Option<HashMap<String, String>>,
+
+    /// Optional body to include in the request.
+    pub body: Option<Body>,
+}
+
+#[derive(Debug)]
+pub enum Body {
+    Json(serde_json::Value),
+    Bytes(Vec<u8>),
+    Multipart(multipart::Form),
 }
 
 #[derive(Debug, Clone)]
@@ -182,14 +223,21 @@ pub struct Response {
 }
 
 impl Response {
+    #[must_use]
     pub fn has_body(&self) -> bool {
         !self.body.is_empty()
     }
 
+    /// Deserializes the stored body field into a specified type T.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if deserialization fails.
     pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, Error> {
         Ok(serde_json::from_slice(&self.body)?)
     }
 
+    #[must_use]
     pub fn get_utf8_header(&self, name: &str) -> Option<&str> {
         self.headers
             .get(name)
@@ -214,15 +262,13 @@ mod tests {
     async fn test_empty_post_request() {
         let client = test_client();
         let response = client
-            .send_request::<()>(
-                Request {
-                    url: "/post".to_string(),
-                    method: Method::POST,
-                    content_type: None,
-                    headers: None,
-                },
-                None,
-            )
+            .send_request(Request {
+                url: "/post".to_string(),
+                method: Method::POST,
+                content_type: None,
+                headers: None,
+                body: None,
+            })
             .await;
 
         assert!(response.is_ok());
@@ -239,15 +285,13 @@ mod tests {
         });
 
         let response = client
-            .send_request(
-                Request {
-                    url: "/post".to_string(),
-                    method: Method::POST,
-                    content_type: None,
-                    headers: None,
-                },
-                Some(&data),
-            )
+            .send_request(Request {
+                url: "/post".to_string(),
+                method: Method::POST,
+                content_type: None,
+                headers: None,
+                body: Some(Body::Json(data)),
+            })
             .await;
 
         assert!(response.is_ok());
@@ -259,15 +303,13 @@ mod tests {
     async fn test_get_request() {
         let client = test_client();
         let response = client
-            .send_request::<()>(
-                Request {
-                    url: "/get".to_string(),
-                    method: Method::GET,
-                    content_type: None,
-                    headers: None,
-                },
-                None,
-            )
+            .send_request(Request {
+                url: "/get".to_string(),
+                method: Method::GET,
+                content_type: None,
+                headers: None,
+                body: None,
+            })
             .await;
 
         assert!(response.is_ok());
@@ -280,15 +322,13 @@ mod tests {
     async fn test_delete_request() {
         let client = test_client();
         let response = client
-            .send_request::<()>(
-                Request {
-                    url: "/delete".to_string(),
-                    method: Method::DELETE,
-                    content_type: None,
-                    headers: None,
-                },
-                None,
-            )
+            .send_request(Request {
+                url: "/delete".to_string(),
+                method: Method::DELETE,
+                content_type: None,
+                headers: None,
+                body: None,
+            })
             .await;
 
         assert!(response.is_ok());
@@ -301,15 +341,13 @@ mod tests {
         let client = test_client();
         let data = serde_json::json!({ "update": true });
         let response = client
-            .send_request(
-                Request {
-                    url: "/put".to_string(),
-                    method: Method::PUT,
-                    content_type: None,
-                    headers: None,
-                },
-                Some(&data),
-            )
+            .send_request(Request {
+                url: "/put".to_string(),
+                method: Method::PUT,
+                content_type: None,
+                headers: None,
+                body: Some(Body::Json(data)),
+            })
             .await;
 
         assert!(response.is_ok());
@@ -322,15 +360,51 @@ mod tests {
         let client = test_client();
         let data = serde_json::json!({ "patched": true });
         let response = client
-            .send_request(
-                Request {
-                    url: "/patch".to_string(),
-                    method: Method::PATCH,
-                    content_type: None,
-                    headers: None,
-                },
-                Some(&data),
-            )
+            .send_request(Request {
+                url: "/patch".to_string(),
+                method: Method::PATCH,
+                content_type: None,
+                headers: None,
+                body: Some(Body::Json(data)),
+            })
+            .await;
+
+        assert!(response.is_ok());
+        let response = response.unwrap();
+        assert_eq!(response.status_code, 200);
+    }
+
+    #[tokio::test]
+    async fn test_post_multipart_request() {
+        let client = test_client();
+        let form = multipart::Form::new()
+            .text("name", "Alice")
+            .text("lang", "Rust");
+
+        let response = client
+            .send_request(Request {
+                url: "/post".to_string(),
+                method: Method::POST,
+                content_type: None,
+                headers: None,
+                body: Some(Body::Multipart(form)),
+            })
+            .await;
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_post_bytes_data() {
+        let client = test_client();
+        let data = b"hello world";
+        let response = client
+            .send_request(Request {
+                url: "/post".to_string(),
+                method: Method::POST,
+                content_type: None,
+                headers: None,
+                body: Some(Body::Bytes(data.to_vec())),
+            })
             .await;
 
         assert!(response.is_ok());
