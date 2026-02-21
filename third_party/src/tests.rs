@@ -106,6 +106,31 @@ async fn test_post_with_body() {
 }
 
 #[tokio::test]
+async fn test_post_with_multipart_form() {
+    let call = CallBuilder::new("/post", "POST")
+        .with_url("https://httpbin.org")
+        .build()
+        .unwrap();
+
+    let tp = ThirdPartyBuilder::new("httpbin", "https://httpbin.org")
+        .with_call("post", call)
+        .build()
+        .unwrap();
+
+    let form = http_client::Form::new()
+        .text("name", "Rustacean")
+        .text("lang", "Rust");
+
+    let request = RequestBuilder::new().multipart(form).build();
+
+    let response = tp.call("post", request).await.unwrap();
+    let json: serde_json::Value = response.decode().unwrap();
+
+    assert_eq!(json["form"]["name"], "Rustacean");
+    assert_eq!(json["form"]["lang"], "Rust");
+}
+
+#[tokio::test]
 async fn test_dependency_extraction() {
     // 1. First call: POST to /post to get a field back
     let dep_call = CallBuilder::new("/post", "POST")

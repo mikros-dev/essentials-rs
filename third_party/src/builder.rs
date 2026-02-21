@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use http_client::Form;
 use serde::Serialize;
 
 use crate::error::Error;
@@ -72,6 +73,7 @@ pub struct RequestBuilder<T = (), D = ()> {
     query_arguments: HashMap<String, String>,
     body: Option<T>,
     headers: HashMap<String, String>,
+    multipart: Option<Form>,
     dependency: Option<DependencyRequest<D>>,
 }
 
@@ -82,6 +84,7 @@ impl RequestBuilder<(), ()> {
             query_arguments: HashMap::new(),
             body: None,
             headers: HashMap::new(),
+            multipart: None,
             dependency: None,
         }
     }
@@ -94,6 +97,7 @@ impl<D> RequestBuilder<(), D> {
             query_arguments: self.query_arguments,
             body: Some(value),
             headers: self.headers,
+            multipart: None,
             dependency: self.dependency,
         }
     }
@@ -106,6 +110,7 @@ impl<T> RequestBuilder<T, ()> {
             query_arguments: self.query_arguments,
             body: self.body,
             headers: self.headers,
+            multipart: self.multipart,
             dependency: Some(dep),
         }
     }
@@ -127,11 +132,18 @@ impl<T, D> RequestBuilder<T, D> {
         self
     }
 
+    pub fn multipart(mut self, form: Form) -> Self {
+        self.multipart = Some(form);
+        self.body = None;
+        self
+    }
+
     pub fn build(self) -> Request<T, D> {
         Request {
             path_arguments: self.path_arguments,
             query_arguments: self.query_arguments,
             body: self.body,
+            multipart: self.multipart,
             headers: self.headers,
             dependency: self.dependency,
         }
