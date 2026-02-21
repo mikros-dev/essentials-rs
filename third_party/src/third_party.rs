@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use http_client::{Client, Method, Options, Request as HttpRequest};
+use http_client::{Body, Client, Form, Method, Options, Request as HttpRequest};
 use logger::Logger;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -30,7 +30,7 @@ impl ThirdParty {
         Ok(Self {
             calls,
             client,
-            logger: Arc::new(Logger::new("third_party", name)),
+            logger: Arc::new(Logger::new(format!("third_party:{}", name).as_str())),
         })
     }
 
@@ -54,6 +54,10 @@ impl ThirdParty {
         // If no dependency
         if request.dependency.is_none() {
             return call.execute(&self.client, request).await;
+        }
+
+        if request.multipart.is_some() {
+            return Err(Error::CannotUseMultipartWithDependency);
         }
 
         // Otherwise call it first, retrieve its response and call the right
@@ -102,13 +106,15 @@ impl Call {
             method: self.method.clone(),
             content_type: self.content_type.clone(),
             headers: Some(request.headers),
+            body: match (request.body, request.multipart) {
+                (Some(body), None) => Some(Body::Json(serde_json::to_value(body)?)),
+                (None, Some(form)) => Some(Body::Multipart(form)),
+                (None, None) => None,
+                (Some(_), Some(_)) => return Err(Error::CannotUseJsonAndMultipartTogether),
+            },
         };
 
-        let client_response = match request.body {
-            None => client.send_request::<()>(client_request, None).await?,
-            Some(body) => client.send_request(client_request, Some(&body)).await?,
-        };
-
+        let client_response = client.send_request(client_request).await?;
         Ok(client_response.into())
     }
 }
@@ -118,6 +124,7 @@ pub struct Request<T = (), D = ()> {
     pub(crate) query_arguments: HashMap<String, String>,
     pub(crate) body: Option<T>,
     pub(crate) headers: HashMap<String, String>,
+    pub(crate) multipart: Option<Form>,
     pub(crate) dependency: Option<DependencyRequest<D>>,
 }
 
@@ -253,6 +260,10 @@ where
     pub(crate) fn try_into_json(
         self,
     ) -> Result<Request<serde_json::Value, serde_json::Value>, Error> {
+        if self.multipart.is_some() {
+            return Err(Error::CannotUseMultipartWithDependency);
+        }
+
         let json_body = match self.body {
             Some(b) => Some(serde_json::to_value(b)?),
             None => None,
@@ -278,6 +289,7 @@ where
             path_arguments: self.path_arguments,
             query_arguments: self.query_arguments,
             body: json_body,
+            multipart: None,
             headers: self.headers,
             dependency: json_dep,
         })
@@ -290,6 +302,7 @@ impl<T: Clone> From<&DependencyRequest<T>> for Request<T> {
             path_arguments: request.path_arguments.clone(),
             query_arguments: request.query_arguments.clone(),
             body: request.body.clone(),
+            multipart: None,
             headers: request.headers.clone(),
             dependency: None,
         }

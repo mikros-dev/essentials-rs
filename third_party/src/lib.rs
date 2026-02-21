@@ -44,3 +44,4 @@ mod tests;
 pub use builder::{CallBuilder, DependencyRequestBuilder, RequestBuilder, ThirdPartyBuilder};
 pub use error::Error;
 pub use third_party::{Call, DependencyRequest, DependencyTarget, Request, Response, ThirdParty};
+pub use http_client::{Form, Part};

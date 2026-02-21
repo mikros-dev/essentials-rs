@@ -1,11 +1,11 @@
 [package]
 name = "third_party"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
-http_client = { git = "https://github.com/mikros-dev/essentials-rs.git", version = "0.1.0" }
-logger = { git = "https://github.com/mikros-dev/essentials-rs.git", version = "0.1.0" }
+http_client = { git = "https://github.com/mikros-dev/essentials-rs.git", version = "0.2.0" }
+logger = { git = "https://github.com/mikros-dev/essentials-rs.git", version = "0.1.1" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_json_path = "0.7.2"

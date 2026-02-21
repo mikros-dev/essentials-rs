@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "http_client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "http",
  "reqwest",
@@ -321,8 +321,8 @@ dependencies = [
 
 [[package]]
 name = "http_client"
-version = "0.1.0"
-source = "git+https://github.com/mikros-dev/essentials-rs.git#b9bbeff0ef6a508412b0818a089a68eb06e756a8"
+version = "0.2.0"
+source = "git+https://github.com/mikros-dev/essentials-rs.git#e11ac136159a7e08bcea27b575ffac98b57d02e3"
 dependencies = [
  "http",
  "reqwest",
@@ -599,8 +599,8 @@ checksum = "13dc2df351e3202783a1fe0d44375f7295ffb4049267b0f3018346dc122a1d94"
 
 [[package]]
 name = "logger"
-version = "0.1.0"
-source = "git+https://github.com/mikros-dev/essentials-rs.git#b9bbeff0ef6a508412b0818a089a68eb06e756a8"
+version = "0.1.1"
+source = "git+https://github.com/mikros-dev/essentials-rs.git#e11ac136159a7e08bcea27b575ffac98b57d02e3"
 dependencies = [
  "serde_json",
  "tracing",
@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde_json",
  "tracing",
@@ -625,6 +625,16 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "mime_guess"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
+dependencies = [
+ "mime",
+ "unicase",
+]
 
 [[package]]
 name = "minimal-lexical"
@@ -834,6 +844,7 @@ dependencies = [
  "bytes",
  "encoding_rs",
  "futures-core",
+ "futures-util",
  "h2",
  "http",
  "http-body",
@@ -845,6 +856,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "native-tls",
  "percent-encoding",
  "pin-project-lite",
@@ -1180,8 +1192,8 @@ dependencies = [
 name = "third_party"
 version = "0.1.1"
 dependencies = [
- "http_client 0.1.0 (git+https://github.com/mikros-dev/essentials-rs.git)",
- "logger 0.1.0",
+ "http_client 0.2.0 (git+https://github.com/mikros-dev/essentials-rs.git)",
+ "logger 0.1.1",
  "serde",
  "serde_json",
  "serde_json_path",
@@ -1361,6 +1373,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "unicase"
+version = "2.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b844d17643ee918803943289730bec8aac480150456169e647ed0b576ba539"
 
 [[package]]
 name = "unicode-ident"
