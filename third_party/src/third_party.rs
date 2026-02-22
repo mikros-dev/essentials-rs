@@ -57,27 +57,35 @@ impl ThirdParty {
         }
 
         if request.multipart.is_some() {
-            return Err(Error::CannotUseMultipartWithDependency);
+            // Multipart flow: dependency can only target header/query/path/bearer.
+            let mut final_request = request;
+
+            if let Some(mut dependency) = final_request.dependency.take() {
+                let extractor = dependency.take_extractor();
+                let result = self.execute_dependency(dependency).await?;
+                final_request.apply_dependency_target_without_body(result, extractor)?;
+            }
+
+            let result = call.execute(&self.client, final_request).await;
+            self.logger.debug("request finished", None);
+            return result;
         }
 
-        // Otherwise call it first, retrieve its response and call the right
-        // request.
+        // JSON flow
         let mut final_request = request.try_into_json()?;
-
         if let Some(mut dependency) = final_request.dependency.take() {
-            let result = self.execute_dependency(&dependency).await?;
             let extractor = dependency.take_extractor();
+            let result = self.execute_dependency(dependency).await?;
             final_request.apply_dependency_target(result, extractor)?;
         }
-
         let result = call.execute(&self.client, final_request).await;
         self.logger.debug("request finished", None);
         result
     }
 
-    async fn execute_dependency<T: Serialize + Clone>(
+    async fn execute_dependency<T: Serialize>(
         &self,
-        dependency: &DependencyRequest<T>,
+        dependency: DependencyRequest<T>,
     ) -> Result<Response, Error> {
         let call = self
             .calls
@@ -212,6 +220,57 @@ impl Request<serde_json::Value, serde_json::Value> {
 }
 
 impl<T, D> Request<T, D> {
+    pub(crate) fn apply_dependency_target_without_body(
+        &mut self,
+        response: Response,
+        extractors: Option<Vec<(String, DependencyTarget)>>,
+    ) -> Result<(), Error> {
+        if let Some(extractors) = extractors {
+            let body = std::str::from_utf8(&response.body)?;
+            let json_body: serde_json::Value = serde_json::from_str(body)?;
+
+            for (extractor, target) in extractors {
+                let value = extract_value(&json_body, &extractor)?;
+                match target {
+                    DependencyTarget::Header(key) => {
+                        self.headers.insert(key, value);
+                    }
+                    DependencyTarget::QueryParam(param) => {
+                        self.query_arguments.insert(param, value);
+                    }
+                    DependencyTarget::PathParam => {
+                        self.path_arguments.push(value);
+                    }
+                    DependencyTarget::BearerAuthorization => {
+                        self.headers
+                            .insert("Authorization".to_string(), format!("Bearer {value}"));
+                    }
+                    DependencyTarget::BodyField(_) => {
+                        return Err(Error::CannotApplyDependencyBodyFieldToMultipart);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn extract_value(json: &serde_json::Value, extractor: &str) -> Result<String, Error> {
+    let path = JsonPath::parse(extractor)?;
+    match path.query(json).first() {
+        None => Err(Error::ExtractorValueNotFound(extractor.to_string())),
+        Some(value) => {
+            if let serde_json::Value::String(s) = value {
+                Ok(s.clone())
+            } else {
+                Ok(serde_json::to_string(value)?)
+            }
+        }
+    }
+}
+
+impl<T, D> Request<T, D> {
     pub(crate) fn url(&self, base_url: Option<&str>, endpoint: &str) -> String {
         let base_path = base_url.unwrap_or("");
         let path = self.build_path(endpoint);
@@ -261,7 +320,7 @@ where
         self,
     ) -> Result<Request<serde_json::Value, serde_json::Value>, Error> {
         if self.multipart.is_some() {
-            return Err(Error::CannotUseMultipartWithDependency);
+            return Err(Error::CannotConvertMultipartToJsonRequest);
         }
 
         let json_body = match self.body {
@@ -304,6 +363,19 @@ impl<T: Clone> From<&DependencyRequest<T>> for Request<T> {
             body: request.body.clone(),
             multipart: None,
             headers: request.headers.clone(),
+            dependency: None,
+        }
+    }
+}
+
+impl<T> From<DependencyRequest<T>> for Request<T> {
+    fn from(request: DependencyRequest<T>) -> Self {
+        Self {
+            path_arguments: request.path_arguments,
+            query_arguments: request.query_arguments,
+            body: request.body,
+            multipart: None,
+            headers: request.headers,
             dependency: None,
         }
     }

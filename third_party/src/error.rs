@@ -21,9 +21,12 @@ pub enum Error {
     #[error("cannot handle request with a body and a dependency to append into it")]
     CannotHandleBodyWithDependencyBody,
 
-    #[error("cannot use multipart body together with dependency resolution")]
-    CannotUseMultipartWithDependency,
+    #[error("cannot convert multipart request into JSON request")]
+    CannotConvertMultipartToJsonRequest,
 
     #[error("request cannot contain both JSON body and multipart form body")]
     CannotUseJsonAndMultipartTogether,
+
+    #[error("cannot apply dependency body field extractor to multipart request")]
+    CannotApplyDependencyBodyFieldToMultipart,
 }
